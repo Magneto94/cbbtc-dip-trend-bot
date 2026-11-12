@@ -9,12 +9,13 @@ STOP_LOSS = 0.006
 MAX_HOLD = 120
 MAX_SLIPPAGE_BPS = 100
 
+# Buy dips only while price is above the 60-bar mean trend gate.
 closes = []
-held_bars = 0
+bars_held = 0
 
 
 def on_batch(state, batch):
-    global held_bars
+    global bars_held
 
     bar = next((bar for bar in batch["bars"] if bar["symbol"] == SYMBOL), None)
     if bar is None:
@@ -28,12 +29,12 @@ def on_batch(state, batch):
 
     held = state.positions.get(SYMBOL)
     if held is not None:
-        held_bars += 1
+        bars_held += 1
         worth = state.value(SYMBOL, held.qty)
         if (worth >= held.cost * (1.0 + TAKE_PROFIT)
                 or worth <= held.cost * (1.0 - STOP_LOSS)
-                or held_bars >= MAX_HOLD):
-            held_bars = 0
+                or bars_held >= MAX_HOLD):
+            bars_held = 0
             return [{"side": "sell", "symbol": SYMBOL, "qty": held.qty,
                      "max_slippage_bps": MAX_SLIPPAGE_BPS}]
         return []
@@ -43,7 +44,7 @@ def on_batch(state, batch):
         gate = sum(closes[-GATE:]) / (GATE * 100000.0)
         past = closes[-1 - LOOKBACK] / 100000.0
         if price > gate and price <= past * (1.0 - DIP):
-            held_bars = 0
+            bars_held = 0
             return [{"side": "buy", "symbol": SYMBOL, "notional_quote_units": state.cash,
                      "max_slippage_bps": MAX_SLIPPAGE_BPS}]
 
